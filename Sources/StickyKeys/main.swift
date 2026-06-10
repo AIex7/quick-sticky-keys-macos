@@ -25,11 +25,16 @@ private struct Modifier: Hashable {
 
 private final class StickyModifierEngine {
     private let stickyDuration: TimeInterval = 1.0
+    private let enabledModifiers: [Modifier]
     private var activeUntil: [Modifier: Date] = [:]
     private var physicallyDown: Set<Modifier> = []
     private var lastPhysicalFlags: CGEventFlags = []
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+
+    init(enabledModifiers: [Modifier] = Modifier.all) {
+        self.enabledModifiers = enabledModifiers
+    }
 
     var activeModifierNames: String {
         pruneExpired()
@@ -106,7 +111,7 @@ private final class StickyModifierEngine {
 
     private func handleFlagsChanged(_ event: CGEvent) {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        guard let modifier = Modifier.all.first(where: { $0.keyCodes.contains(keyCode) }) else {
+        guard let modifier = enabledModifiers.first(where: { $0.keyCodes.contains(keyCode) }) else {
             lastPhysicalFlags = event.flags
             return
         }
@@ -183,16 +188,42 @@ private let eventTapCallback: CGEventTapCallBack = { proxy, type, event, userInf
     return engine.handle(proxy: proxy, type: type, event: event)
 }
 
+private struct LaunchOptions {
+    let hidesMenuBar: Bool
+    let enabledModifiers: [Modifier]
+
+    static func parse(_ arguments: [String]) -> LaunchOptions {
+        let requestedModifiers = Modifier.all.filter { modifier in
+            arguments.contains("--\(modifier.name.lowercased())")
+                || arguments.contains("--sticky-\(modifier.name.lowercased())")
+        }
+
+        return LaunchOptions(
+            hidesMenuBar: arguments.contains("--hide-menu-bar")
+                || arguments.contains("--hide-menubar"),
+            enabledModifiers: requestedModifiers.isEmpty ? Modifier.all : requestedModifiers
+        )
+    }
+}
+
 private final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let engine = StickyModifierEngine()
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let engine: StickyModifierEngine
+    private let launchOptions: LaunchOptions
+    private var statusItem: NSStatusItem?
     private let statusMenu = NSMenu()
     private let statusItemTitle = NSMenuItem(title: "Active: None", action: nil, keyEquivalent: "")
     private var statusTimer: Timer?
 
+    init(launchOptions: LaunchOptions) {
+        self.launchOptions = launchOptions
+        self.engine = StickyModifierEngine(enabledModifiers: launchOptions.enabledModifiers)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        configureMenu()
+        if !launchOptions.hidesMenuBar {
+            configureMenu()
+        }
 
         do {
             try engine.start()
@@ -213,6 +244,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureMenu() {
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.statusItem = statusItem
+
         if let button = statusItem.button {
             button.title = "Sticky Keys"
         }
@@ -239,7 +273,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setStatus(_ title: String) {
-        statusItem.button?.title = title
+        statusItem?.button?.title = title
     }
 
     private func showPermissionAlert(message: String) {
@@ -265,6 +299,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 private let app = NSApplication.shared
-private let delegate = AppDelegate()
+private let delegate = AppDelegate(launchOptions: .parse(CommandLine.arguments))
 app.delegate = delegate
 app.run()

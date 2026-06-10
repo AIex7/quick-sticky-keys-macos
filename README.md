@@ -16,11 +16,34 @@ Run the debug build:
 .build/debug/StickyKeys
 ```
 
+Run without creating a menu-bar item:
+
+```sh
+.build/debug/StickyKeys --hide-menu-bar
+```
+
+Limit sticky behavior to specific modifiers:
+
+```sh
+.build/debug/StickyKeys --shift
+.build/debug/StickyKeys --command --option
+```
+
+Supported modifier flags are `--shift`, `--control`, `--option`, and `--command`.
+If none are provided, all four modifiers are sticky. Each flag also has a
+`--sticky-...` alias, such as `--sticky-shift`.
+
 Create a clickable app bundle:
 
 ```sh
 sh Scripts/build-app.sh
 open .build/StickyKeys.app
+```
+
+Pass arguments to the app bundle with `open --args`:
+
+```sh
+open .build/StickyKeys.app --args --hide-menu-bar --command --option
 ```
 
 The app requires Accessibility permission because it observes and rewrites keyboard events. Use the menu-bar item to open the correct System Settings pane, enable the app or terminal you launched it from, then relaunch.
